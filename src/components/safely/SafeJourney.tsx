@@ -1,14 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MutableRefObject } from "react";
 import { formatElapsed, loadJourney, saveJourney, type JourneyState } from "@/lib/safely";
 
 const CHECK_IN_LIMIT = 15 * 60_000; // 15 minutes between check-ins
 
+export type JourneyControls = { checkIn: () => void; locate: () => void };
+
 export function SafeJourney({
   onOverdueChange,
   onEmergency,
+  onContext,
+  controlsRef,
 }: {
   onOverdueChange: (overdue: boolean, active: boolean) => void;
   onEmergency: () => void;
+  onContext?: (c: {
+    destination: string;
+    checkedIn: boolean;
+    locationAvailable: boolean;
+  }) => void;
+  controlsRef?: MutableRefObject<JourneyControls | null>;
 }) {
   const [journey, setJourney] = useState<JourneyState>(null);
   const [destination, setDestination] = useState("");
@@ -16,6 +26,7 @@ export function SafeJourney({
   const [toast, setToast] = useState("");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locStatus, setLocStatus] = useState("");
+
 
   useEffect(() => {
     setJourney(loadJourney());
