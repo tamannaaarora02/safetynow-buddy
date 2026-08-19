@@ -1,10 +1,13 @@
 export type Contact = { id: string; name: string; phone: string };
 
+export type GpsCoords = { lat: number; lng: number; accuracy?: number; updatedAt: number };
+
 export type JourneyState = {
   active: boolean;
   destination: string;
   startedAt: number;
   lastCheckIn: number;
+  lastLocation?: GpsCoords;
 } | null;
 
 const KEYS = {

@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
-import type { Contact } from "@/lib/safely";
+import type { Contact, GpsCoords } from "@/lib/safely";
+import { stopSiren } from "@/lib/siren";
 
 export function EmergencyOverlay({
   contacts,
   onCancel,
+  location,
 }: {
   contacts: Contact[];
   onCancel: () => void;
+  location?: GpsCoords | null;
 }) {
   const [count, setCount] = useState(10);
   const [alerted, setAlerted] = useState(false);
@@ -20,6 +23,15 @@ export function EmergencyOverlay({
   useEffect(() => {
     if (count === 0 && !alerted) setAlerted(true);
   }, [count, alerted]);
+
+  const handleCancel = () => {
+    stopSiren();
+    onCancel();
+  };
+
+  const mapUrl = location
+    ? `https://www.google.com/maps?q=${location.lat},${location.lng}`
+    : null;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 overflow-y-auto bg-danger px-5 py-10 text-danger-foreground animate-in fade-in duration-200">
@@ -37,6 +49,25 @@ export function EmergencyOverlay({
           ? "Hold on. Alerting in progress — cancel if you are safe."
           : "Countdown complete. Emergency actions are live."}
       </p>
+
+      {location && (
+        <div className="w-full max-w-md rounded-xl bg-black/25 px-4 py-3 text-center text-sm">
+          <p className="font-semibold">Your latest location</p>
+          <p className="mt-1 opacity-90">
+            {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
+          </p>
+          {mapUrl && (
+            <a
+              href={mapUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-block rounded-lg border border-current/40 px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-black/20"
+            >
+              View on Map
+            </a>
+          )}
+        </div>
+      )}
 
       {alerted && (
         <div className="w-full max-w-md rounded-xl bg-black/25 px-4 py-3 text-center text-sm font-semibold animate-in fade-in slide-in-from-bottom-2">
@@ -67,7 +98,7 @@ export function EmergencyOverlay({
           ALERT CONTACTS
         </button>
         <button
-          onClick={onCancel}
+          onClick={handleCancel}
           className="rounded-xl bg-black/25 px-5 py-4 text-base font-bold transition-colors hover:bg-black/35"
         >
           CANCEL

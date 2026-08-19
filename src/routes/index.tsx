@@ -1,16 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EmergencyOverlay } from "@/components/safely/EmergencyOverlay";
-import { SafeJourney } from "@/components/safely/SafeJourney";
+import { SafeJourney, type JourneyControls } from "@/components/safely/SafeJourney";
 import { SafeAI } from "@/components/safely/SafeAI";
 import { NearbySafety } from "@/components/safely/NearbySafety";
 import { Contacts } from "@/components/safely/Contacts";
+import { VoiceSos } from "@/components/safely/VoiceSos";
+import { startSiren } from "@/lib/siren";
 import {
   loadContacts,
   loadSettings,
   saveContacts,
   saveSettings,
   type Contact,
+  type GpsCoords,
 } from "@/lib/safely";
 
 export const Route = createFileRoute("/")({
@@ -53,6 +56,8 @@ function Index() {
   const [emergency, setEmergency] = useState(false);
   const [journeyActive, setJourneyActive] = useState(false);
   const [overdue, setOverdue] = useState(false);
+  const [emergencyLocation, setEmergencyLocation] = useState<GpsCoords | null>(null);
+  const journeyControlsRef = useRef<JourneyControls | null>(null);
 
   useEffect(() => {
     setContacts(loadContacts());
@@ -74,6 +79,13 @@ function Index() {
     setJourneyActive(active);
   }, []);
 
+  const triggerEmergency = useCallback(() => {
+    const loc = journeyControlsRef.current?.getLatestLocation() ?? null;
+    setEmergencyLocation(loc ?? null);
+    startSiren();
+    setEmergency(true);
+  }, []);
+
   const status: Status = emergency
     ? "emergency"
     : overdue
@@ -87,7 +99,11 @@ function Index() {
   return (
     <main className="min-h-screen bg-background">
       {emergency && (
-        <EmergencyOverlay contacts={contacts} onCancel={() => setEmergency(false)} />
+        <EmergencyOverlay
+          contacts={contacts}
+          onCancel={() => setEmergency(false)}
+          location={emergencyLocation}
+        />
       )}
 
       <header className="border-b border-border">
@@ -118,7 +134,7 @@ function Index() {
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <button
-              onClick={() => setEmergency(true)}
+              onClick={triggerEmergency}
               className="group relative overflow-hidden rounded-2xl bg-danger px-6 py-6 font-display text-2xl font-bold text-danger-foreground transition-transform hover:scale-[1.01] active:scale-[0.99]"
             >
               <span className="absolute inset-0 animate-pulse bg-white/5" />
@@ -146,7 +162,12 @@ function Index() {
           </div>
         </section>
 
-        <SafeJourney onOverdueChange={handleJourney} onEmergency={() => setEmergency(true)} />
+        <SafeJourney
+          onOverdueChange={handleJourney}
+          onEmergency={triggerEmergency}
+          controlsRef={journeyControlsRef}
+        />
+        <VoiceSos onTrigger={triggerEmergency} />
         <SafeAI />
         <NearbySafety />
         <Contacts contacts={contacts} onChange={updateContacts} />
