@@ -1,0 +1,153 @@
+import { useEffect, useState } from "react";
+import { formatElapsed, loadJourney, saveJourney, type JourneyState } from "@/lib/safely";
+
+const CHECK_IN_LIMIT = 60_000; // 60s without a check-in triggers a warning
+
+export function SafeJourney({
+  onOverdueChange,
+  onEmergency,
+}: {
+  onOverdueChange: (overdue: boolean, active: boolean) => void;
+  onEmergency: () => void;
+}) {
+  const [journey, setJourney] = useState<JourneyState>(null);
+  const [destination, setDestination] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    setJourney(loadJourney());
+  }, []);
+
+  useEffect(() => {
+    const i = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(i);
+  }, []);
+
+  const overdue = !!journey?.active && now - journey.lastCheckIn > CHECK_IN_LIMIT;
+
+  useEffect(() => {
+    onOverdueChange(overdue, !!journey?.active);
+  }, [overdue, journey?.active, onOverdueChange]);
+
+  const update = (j: JourneyState) => {
+    setJourney(j);
+    saveJourney(j);
+  };
+
+  const start = () => {
+    if (!destination.trim()) return;
+    const t = Date.now();
+    update({ active: true, destination: destination.trim(), startedAt: t, lastCheckIn: t });
+    setDestination("");
+    setToast("Journey started — check in every minute.");
+  };
+
+  const checkIn = () => {
+    if (!journey) return;
+    update({ ...journey, lastCheckIn: Date.now() });
+    setToast("Check-in received. You're marked safe.");
+  };
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(""), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const secsLeft = journey?.active
+    ? Math.max(0, Math.ceil((CHECK_IN_LIMIT - (now - journey.lastCheckIn)) / 1000))
+    : 0;
+
+  return (
+    <section
+      id="journey"
+      className="rounded-2xl border border-border bg-card p-5 sm:p-6 transition-colors"
+    >
+      <h2 className="text-lg font-semibold">Safe Journey</h2>
+
+      {!journey?.active ? (
+        <div className="mt-4 space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Tell SAFELY where you are heading. Missed check-ins raise an alert.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              value={destination}
+              onChange={(e) => setDestination(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && start()}
+              placeholder="Destination (e.g. Home, 14 Park Lane)"
+              className="w-full rounded-xl border border-input bg-secondary px-4 py-3 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
+            />
+            <button
+              onClick={start}
+              disabled={!destination.trim()}
+              className="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+            >
+              START SAFE JOURNEY
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <div
+            className={`rounded-xl border px-4 py-3 text-sm font-semibold transition-colors ${
+              overdue
+                ? "border-warn/50 bg-warn/15 text-warn"
+                : "border-safe/40 bg-safe/10 text-safe"
+            }`}
+          >
+            {overdue
+              ? "No check-in received. Contacts will be alerted if you stay silent."
+              : `Journey active — check in within ${secsLeft}s`}
+          </div>
+
+          <dl className="grid gap-3 sm:grid-cols-3">
+            {[
+              ["Destination", journey.destination],
+              ["Elapsed", formatElapsed(now - journey.startedAt)],
+              ["Status", overdue ? "At risk" : "Safe"],
+            ].map(([k, v]) => (
+              <div key={k} className="rounded-xl bg-secondary px-4 py-3">
+                <dt className="text-xs uppercase tracking-wider text-muted-foreground">{k}</dt>
+                <dd className="mt-1 font-display text-base font-semibold">{v}</dd>
+              </div>
+            ))}
+          </dl>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={checkIn}
+              className="rounded-xl bg-safe px-5 py-3 text-sm font-bold text-safe-foreground transition-transform active:scale-[0.98]"
+            >
+              I'M SAFE
+            </button>
+            <button
+              onClick={() => {
+                update(null);
+                setToast("Journey ended.");
+              }}
+              className="rounded-xl border border-border px-5 py-3 text-sm font-semibold transition-colors hover:bg-accent"
+            >
+              END JOURNEY
+            </button>
+            {overdue && (
+              <button
+                onClick={onEmergency}
+                className="rounded-xl bg-danger px-5 py-3 text-sm font-bold text-danger-foreground"
+              >
+                TRIGGER EMERGENCY
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <p className="mt-3 text-sm text-primary animate-in fade-in slide-in-from-bottom-1">
+          {toast}
+        </p>
+      )}
+    </section>
+  );
+}
