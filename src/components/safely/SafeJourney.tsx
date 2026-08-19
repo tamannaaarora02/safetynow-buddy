@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { formatElapsed, loadJourney, saveJourney, type JourneyState } from "@/lib/safely";
 
-const CHECK_IN_LIMIT = 60_000; // 60s without a check-in triggers a warning
+const CHECK_IN_LIMIT = 15 * 60_000; // 15 minutes between check-ins
 
 export function SafeJourney({
   onOverdueChange,
@@ -14,6 +14,8 @@ export function SafeJourney({
   const [destination, setDestination] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [toast, setToast] = useState("");
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locStatus, setLocStatus] = useState("");
 
   useEffect(() => {
     setJourney(loadJourney());
@@ -40,13 +42,36 @@ export function SafeJourney({
     const t = Date.now();
     update({ active: true, destination: destination.trim(), startedAt: t, lastCheckIn: t });
     setDestination("");
-    setToast("Journey started — check in every minute.");
+    setToast("Journey started — check in every 15 minutes.");
   };
 
   const checkIn = () => {
     if (!journey) return;
     update({ ...journey, lastCheckIn: Date.now() });
-    setToast("Check-in received. You're marked safe.");
+    setToast("Check-in successful. You're marked safe.");
+  };
+
+  const locate = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocStatus("Location is not supported by this browser.");
+      return;
+    }
+    setLocStatus("Getting your location...");
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        setCoords({ lat: p.coords.latitude, lng: p.coords.longitude });
+        setLocStatus("");
+      },
+      (err) => {
+        setCoords(null);
+        setLocStatus(
+          err.code === err.PERMISSION_DENIED
+            ? "Location permission denied. You can still use every other feature."
+            : "Couldn't get your location right now. Please try again.",
+        );
+      },
+      { timeout: 10000, enableHighAccuracy: true },
+    );
   };
 
   useEffect(() => {
@@ -55,16 +80,33 @@ export function SafeJourney({
     return () => clearTimeout(t);
   }, [toast]);
 
-  const secsLeft = journey?.active
-    ? Math.max(0, Math.ceil((CHECK_IN_LIMIT - (now - journey.lastCheckIn)) / 1000))
+  const msLeft = journey?.active
+    ? Math.max(0, CHECK_IN_LIMIT - (now - journey.lastCheckIn))
     : 0;
+  const countdown = formatElapsed(msLeft);
 
   return (
     <section
       id="journey"
       className="rounded-2xl border border-border bg-card p-5 sm:p-6 transition-colors"
     >
-      <h2 className="text-lg font-semibold">Safe Journey</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">Safe Journey</h2>
+        <button
+          onClick={locate}
+          className="rounded-xl border border-border px-4 py-2 text-sm font-semibold transition-colors hover:bg-accent"
+        >
+          Use My Location
+        </button>
+      </div>
+
+      {(coords || locStatus) && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          {coords
+            ? `Current location: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`
+            : locStatus}
+        </p>
+      )}
 
       {!journey?.active ? (
         <div className="mt-4 space-y-3">
@@ -98,15 +140,16 @@ export function SafeJourney({
             }`}
           >
             {overdue
-              ? "No check-in received. Contacts will be alerted if you stay silent."
-              : `Journey active — check in within ${secsLeft}s`}
+              ? "Check-in overdue — confirm you're safe or get help now."
+              : `Journey active — next check-in in ${countdown}`}
           </div>
 
-          <dl className="grid gap-3 sm:grid-cols-3">
+          <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
               ["Destination", journey.destination],
               ["Elapsed", formatElapsed(now - journey.startedAt)],
-              ["Status", overdue ? "At risk" : "Safe"],
+              ["Next check-in", overdue ? "Overdue" : countdown],
+              ["Status", overdue ? "Check-in overdue" : "Safe"],
             ].map(([k, v]) => (
               <div key={k} className="rounded-xl bg-secondary px-4 py-3">
                 <dt className="text-xs uppercase tracking-wider text-muted-foreground">{k}</dt>
@@ -122,6 +165,14 @@ export function SafeJourney({
             >
               I'M SAFE
             </button>
+            {overdue && (
+              <button
+                onClick={onEmergency}
+                className="rounded-xl bg-danger px-5 py-3 text-sm font-bold text-danger-foreground"
+              >
+                I NEED HELP
+              </button>
+            )}
             <button
               onClick={() => {
                 update(null);
@@ -131,14 +182,6 @@ export function SafeJourney({
             >
               END JOURNEY
             </button>
-            {overdue && (
-              <button
-                onClick={onEmergency}
-                className="rounded-xl bg-danger px-5 py-3 text-sm font-bold text-danger-foreground"
-              >
-                TRIGGER EMERGENCY
-              </button>
-            )}
           </div>
         </div>
       )}
